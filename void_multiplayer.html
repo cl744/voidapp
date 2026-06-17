@@ -1,0 +1,411 @@
+'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Void - Local Multiplayer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#000;color:#fff;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;overflow:hidden;width:100vw;height:100vh;position:fixed}
+#canvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:1}
+.ui-layer{position:fixed;z-index:10;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.95);transition:opacity .5s}
+.ui-layer.hidden{opacity:0;pointer-events:none}
+.title{font-size:3rem;font-weight:200;letter-spacing:.5rem;margin-bottom:2rem;text-shadow:0 0 20px rgba(255,255,255,0.3);animation:pulse 3s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.7}50%{opacity:1}}
+.btn{background:transparent;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:15px 40px;font-size:1.1rem;letter-spacing:.2rem;cursor:pointer;margin:10px;transition:all .3s;text-transform:uppercase;min-width:200px}
+.btn:hover{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.6);box-shadow:0 0 20px rgba(255,255,255,0.1)}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.input-group{display:flex;flex-direction:column;align-items:center;gap:15px;margin:20px 0}
+input[type="text"]{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:12px 20px;font-size:1rem;text-align:center;letter-spacing:.1rem;width:250px;outline:none}
+input[type="text"]:focus{border-color:rgba(255,255,255,0.5)}
+.status{color:rgba(255,255,255,0.5);font-size:.9rem;margin-top:10px;letter-spacing:.05rem}
+.error{color:#f44;margin-top:10px}
+.success{color:#4f4;margin-top:10px}
+#gameUI{position:fixed;z-index:5;top:0;left:0;width:100%;padding:15px;display:none;justify-content:space-between;pointer-events:none}
+#gameUI.active{display:flex}
+.game-info{color:rgba(255,255,255,0.4);font-size:.85rem;letter-spacing:.05rem}
+.player-count{color:rgba(255,255,255,0.6)}
+#joystick-zone{position:fixed;bottom:50px;left:50px;width:120px;height:120px;z-index:8;display:none;touch-action:none}
+#joystick-zone.active{display:block}
+.joystick-base{position:absolute;width:100%;height:100%;border:2px solid rgba(255,255,255,0.15);border-radius:50%}
+.joystick-knob{position:absolute;width:50px;height:50px;background:rgba(255,255,255,0.2);border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%);transition:transform .1s}
+.instructions{color:rgba(255,255,255,0.3);font-size:.8rem;margin-top:30px;text-align:center;line-height:1.6;max-width:300px}
+.room-code-display{font-size:2rem;letter-spacing:.3rem;color:#fff;margin:15px 0;font-family:monospace}
+.copy-hint{color:rgba(255,255,255,0.3);font-size:.75rem;margin-top:5px}
+.game-overlay{position:fixed;z-index:15;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);pointer-events:auto}
+.game-overlay.active{display:flex}
+.overlay-title{font-size:2.5rem;font-weight:200;letter-spacing:.4rem;margin-bottom:1rem}
+.overlay-subtitle{color:rgba(255,255,255,0.5);font-size:1rem;letter-spacing:.1rem;margin-bottom:2rem}
+.scoreboard{margin:20px 0;min-width:280px}
+.score-row{display:flex;justify-content:space-between;padding:8px 15px;margin:4px 0;border:1px solid rgba(255,255,255,0.1);font-size:.9rem}
+.score-row.winner{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.3)}
+.score-name{display:flex;align-items:center;gap:8px}
+.score-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.score-value{font-family:monospace;font-size:1.1rem}
+.game-timer{position:fixed;top:15px;left:50%;transform:translateX(-50%);z-index:6;font-family:monospace;font-size:1.2rem;color:rgba(255,255,255,0.6);letter-spacing:.2rem;pointer-events:none;display:none}
+.game-timer.active{display:block}
+.game-timer.warning{color:#f44;animation:pulse 1s ease-in-out infinite}
+.leaderboard{position:fixed;top:50px;right:15px;z-index:6;pointer-events:none;display:none}
+.leaderboard.active{display:block}
+.leaderboard-row{display:flex;align-items:center;gap:10px;margin:4px 0;font-size:.8rem;color:rgba(255,255,255,0.5)}
+.leaderboard-dot{width:6px;height:6px;border-radius:50%}
+.leaderboard-score{font-family:monospace;min-width:20px;text-align:right}
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="mainMenu" class="ui-layer">
+<div class="title">VOID</div>
+<button class="btn" onclick="showHost()">Create Room</button>
+<button class="btn" onclick="showJoin()">Join Room</button>
+<div class="instructions">Collect Void Orbs. Avoid the Rifts.<br>First to 10 orbs wins.<br>All players must be on the same WiFi network.<br>Works on PC (WASD/Arrows) and Mobile (joystick).</div>
+</div>
+
+<div id="hostInputScreen" class="ui-layer hidden">
+<div class="title">CREATE ROOM</div>
+<div class="input-group">
+<input type="text" id="hostCodeInput" placeholder="ENTER CODE" maxlength="6" style="text-transform:uppercase">
+<button class="btn" onclick="createRoom()">Create</button>
+</div>
+<div class="status" id="hostInputStatus">Leave blank for random code</div>
+<button class="btn" onclick="show('mainMenu')" style="font-size:.8rem;padding:10px 25px;margin-top:20px">Back</button>
+</div>
+
+<div id="hostScreen" class="ui-layer hidden">
+<div class="title">ROOM CREATED</div>
+<div class="room-code-display" id="hostCode">----</div>
+<div class="copy-hint">Share this code with friends</div>
+<div class="status" id="hostStatus">Waiting for players...</div>
+<div class="player-count" id="hostPlayerCount">Players: 1</div>
+<button class="btn" onclick="startGame()" style="margin-top:30px">Enter Void</button>
+<button class="btn" onclick="show('mainMenu')" style="font-size:.8rem;padding:10px 25px">Back</button>
+</div>
+
+<div id="joinScreen" class="ui-layer hidden">
+<div class="title">JOIN ROOM</div>
+<div class="input-group">
+<input type="text" id="joinCode" placeholder="ENTER CODE" maxlength="6" style="text-transform:uppercase">
+<button class="btn" onclick="joinRoom()">Connect</button>
+</div>
+<div class="status" id="joinStatus"></div>
+<button class="btn" onclick="show('mainMenu')" style="font-size:.8rem;padding:10px 25px;margin-top:20px">Back</button>
+</div>
+
+<div id="gameUI"><div class="game-info"><div>VOID</div><div class="player-count" id="gamePlayerCount">Players: 1</div></div><div class="game-info" style="text-align:right"><div id="connectionStatus">Connected</div><div style="font-size:.7rem;margin-top:2px">Same WiFi Required</div></div></div>
+
+<div class="game-timer" id="gameTimer">00:00</div>
+<div class="leaderboard" id="leaderboard"></div>
+
+<div class="game-overlay" id="waitingOverlay"><div class="overlay-title">WAITING</div><div class="overlay-subtitle">Host will start the game...</div><div class="status">Connected to room</div></div>
+<div class="game-overlay" id="gameOverOverlay"><div class="overlay-title" id="gameOverTitle">VOID CONQUERED</div><div class="overlay-subtitle" id="gameOverSubtitle">Game Over</div><div class="scoreboard" id="scoreboard"></div><button class="btn" onclick="returnToMenu()" style="margin-top:20px">Main Menu</button><button class="btn" onclick="restartGame()" id="restartBtn" style="font-size:.8rem;padding:10px 25px">Play Again</button></div>
+<div class="game-overlay" id="countdownOverlay" style="background:rgba(0,0,0,0.6)"><div class="overlay-title" id="countdownNumber" style="font-size:6rem">3</div></div>
+
+<div id="joystick-zone"><div class="joystick-base"></div><div class="joystick-knob" id="joystick-knob"></div></div>
+
+<script>
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d'),$=id=>document.getElementById(id);
+let w,h,lastT=0;
+function resize(){w=canvas.width=innerWidth;h=canvas.height=innerHeight}
+resize();addEventListener('resize',resize);
+
+const S={mode:'menu',phase:'waiting',host:false,code:null,players:new Map(),myId:null,lp:{x:0,y:0,vx:0,vy:0},stars:[],conns:[],dcs:[],nextId:2,joy:{a:false,dx:0,dy:0},orbs:[],rifts:[],parts:[],texts:[],target:10,time:0,maxTime:180,orbT:0,orbI:2,riftT:0,riftI:8,maxOrbs:5,maxRifts:2,cd:3,cdT:0,win:null};
+const rand=(a,b)=>a+(b-a)*Math.random(),randInt=a=>Math.floor(Math.random()*a),dist=(x1,y1,x2,y2)=>Math.hypot(x2-x1,y2-y1);
+const randColor=(hues)=>`hsl(${hues[randInt(hues.length)]},${hues===[45,160,280,340]?'90%,65%':'80%,60%'})`;
+const genCode=()=>{const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let r='';for(let i=4;i--;)r+=c[randInt(c.length)];return r};
+const clean=s=>s.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
+
+for(let i=200;i--;)S.stars.push({x:rand(0,w),y:rand(0,h),s:rand(0,2),o:rand(.2,1),t:rand(0,Math.PI*2)});
+
+const AudioCtx=window.AudioContext||window.webkitAudioContext;
+let actx=null;
+const initAudio=()=>{if(!actx)actx=new AudioCtx()};
+const playS=t=>{if(!actx)return;try{const o=actx.createOscillator(),g=actx.createGain();o.connect(g);g.connect(actx.destination);const n=actx.currentTime,s={collect:[880,1760,.15,.2,'sine'],damage:[200,50,.2,.3,'sawtooth'],spawn:[440,880,.1,.15,'sine'],go:[880,0,.2,.4,'sine'],countdown:[440,0,.1,.1,'square']}[t];o.type=s[4];o.frequency.setValueAtTime(s[0],n);if(s[1])o.frequency.exponentialRampToValueAtTime(s[1],n+s[3]);g.gain.setValueAtTime(s[2],n);g.gain.exponentialRampToValueAtTime(.01,n+s[3]);o.start(n);o.stop(n+s[3]);if(t==='win')[523,659,784,1047].forEach((f,i)=>{const o2=actx.createOscillator(),g2=actx.createGain();o2.connect(g2);g2.connect(actx.destination);o2.type='sine';o2.frequency.setValueAtTime(f,n+i*.15);g2.gain.setValueAtTime(.15,n+i*.15);g2.gain.exponentialRampToValueAtTime(.01,n+i*.15+.3);o2.start(n+i*.15);o2.stop(n+i*.15+.3)})}catch(e){}};
+
+const SIG='wss://simple-signaling.fly.dev';
+let ws=null;
+const connectSig=()=>new Promise((res,rej)=>{try{ws=new WebSocket(SIG);ws.onopen=res;ws.onerror=()=>rej(new Error('No signaling'));ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='player-joined'&&S.host)handleNew(m.from);else if(m.type==='offer'&&!S.host)handleOff(m);else if(m.type==='answer'&&S.host)handleAns(m);else if(m.type==='ice-candidate')handleIce(m)}catch(e){}}}catch(e){rej(e)}});
+const sendSig=d=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify(d))};
+
+async function mkConn(init,target){
+const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
+const dc=pc.createDataChannel('game',{ordered:true,maxRetransmits:3});setupDC(dc,target);
+pc.ondatachannel=e=>setupDC(e.channel,target);
+pc.onicecandidate=e=>{if(e.candidate)sendSig({type:'ice-candidate',to:target,from:S.myId,candidate:e.candidate,room:S.code})};
+S.conns.push(pc);return pc;
+}
+
+function setupDC(dc,pid){
+S.dcs.push(dc);
+dc.onopen=()=>{if(!S.host)return;const pd={};S.players.forEach((v,k)=>pd[k]=v);dc.send(JSON.stringify({type:'init',players:pd,yourId:S.nextId++,gamePhase:S.phase,orbs:S.orbs,rifts:S.rifts,targetScore:S.target}))};
+dc.onmessage=e=>{try{handleGM(JSON.parse(e.data),pid)}catch(e){}};
+dc.onclose=()=>{S.players.delete(pid);updCount();updLB()};
+}
+
+function handleGM(d,from){
+const t=d.type;
+if(t==='init'){S.players=new Map(Object.entries(d.players));S.myId=d.yourId;S.orbs=d.orbs||[];S.rifts=d.rifts||[];S.target=d.targetScore||10;S.phase=d.gamePhase||'waiting';const m=S.players.get(S.myId);if(m){S.lp.x=m.x;S.lp.y=m.y}updCount();updLB()}
+else if(t==='player-update'){const e=S.players.get(d.id);if(e){e.x=d.x;e.y=d.y;e.vx=d.vx||0;e.vy=d.vy||0}else S.players.set(d.id,{x:d.x,y:d.y,color:d.color,name:d.name,score:d.score||0,alive:d.alive!==false})}
+else if(t==='new-player'){S.players.set(d.id,{x:d.x,y:d.y,color:d.color,name:d.name,score:0,alive:true});updCount();updLB()}
+else if(t==='game-state'&&!S.host){S.orbs=d.orbs||S.orbs;S.rifts=d.rifts||S.rifts;S.phase=d.gamePhase||S.phase;S.time=d.gameTime||S.time;S.win=d.winner||null;if(d.players)Object.entries(d.players).forEach(([k,v])=>{if(k===S.myId)return;const e=S.players.get(k);if(e){e.x=v.x;e.y=v.y;e.score=v.score;e.alive=v.alive}else S.players.set(k,v)});if(d.scores)Object.entries(d.scores).forEach(([k,v])=>{const p=S.players.get(k);if(p)p.score=v});updLB();updTimer();if(S.phase==='countdown')showCD(d.countdown||3);else if(S.phase==='playing'){hideCD();hideWait()}else if(S.phase==='gameover')showGO(d.winner)}}
+else if(t==='collect-orb'){S.orbs=S.orbs.filter(o=>o.id!==d.orbId);const p=S.players.get(d.playerId);if(p){p.score=d.score;if(d.playerId===S.myId){playS('collect');addText(p.x,p.y-30,'+1','#4f4',20)}}updLB();for(let i=12;i--;)S.parts.push({x:d.orbX,y:d.orbY,vx:Math.cos(i*Math.PI/6)*3,vy:Math.sin(i*Math.PI/6)*3,life:.5,max:.5,color:d.orbColor||'#fff',size:3})}
+else if(t==='player-damage'){const p=S.players.get(d.playerId);if(p){p.alive=false;p.respawn=2;p.score=Math.max(0,p.score-1);if(d.playerId===S.myId){playS('damage');addText(p.x,p.y-30,'-1','#f44',20)}}updLB();for(let i=16;i--;)S.parts.push({x:d.x,y:d.y,vx:Math.cos(rand(0,Math.PI*2))*rand(2,6),vy:Math.sin(rand(0,Math.PI*2))*rand(2,6),life:.6,max:.6,color:'#f44',size:rand(2,5)})}
+else if(t==='player-respawn'){const p=S.players.get(d.playerId);if(p){p.alive=true;p.x=d.x;p.y=d.y;p.respawn=0}}
+else if(t==='spawn-orb'){S.orbs.push(d.orb);playS('spawn')}
+else if(t==='spawn-rift')S.rifts.push(d.rift);
+else if(t==='start-countdown'&&!S.host){S.phase='countdown';S.cd=d.countdown;showCD(d.countdown);hideWait()}
+else if(t==='start-game'&&!S.host){S.phase='playing';hideCD();hideWait();playS('go')}
+else if(t==='game-over'&&!S.host){S.phase='gameover';S.win=d.winner;showGO(d.winner)}
+else if(t==='restart-game'&&!S.host){reset();S.phase='waiting';hideGO();showWait()}
+}
+
+async function handleNew(from){const pc=await mkConn(true,from);const off=await pc.createOffer();await pc.setLocalDescription(off);sendSig({type:'offer',to:from,from:S.myId,offer:off,room:S.code})}
+async function handleOff(m){const pc=await mkConn(false,m.from);await pc.setRemoteDescription(m.offer);const ans=await pc.createAnswer();await pc.setLocalDescription(ans);sendSig({type:'answer',to:m.from,from:S.myId,answer:ans,room:S.code})}
+async function handleAns(m){const pc=S.conns.find(c=>!c.remoteDescription||c.remoteDescription.type==='offer');if(pc)await pc.setRemoteDescription(m.answer)}
+async function handleIce(m){const pc=S.conns[S.conns.length-1];if(pc)await pc.addIceCandidate(m.candidate)}
+
+const show=id=>{document.querySelectorAll('.ui-layer').forEach(e=>e.classList.add('hidden'));$(id).classList.remove('hidden');S.mode=id==='mainMenu'?'menu':S.mode};
+const showHost=()=>{show('hostInputScreen');S.mode='host-input';$('hostCodeInput').value='';$('hostInputStatus').textContent='Leave blank for random code';$('hostInputStatus').className='status';setTimeout(()=>$('hostCodeInput').focus(),100)};
+
+function createRoom(){
+let c=clean($('hostCodeInput').value);
+if(!c)c=genCode();else if(c.length<2){$('hostInputStatus').textContent='Code must be at least 2 characters';$('hostInputStatus').className='error';return}
+S.code=c;S.host=true;S.myId='host-1';
+show('hostScreen');S.mode='host';
+$('hostCode').textContent=c;
+S.lp.x=w/2;S.lp.y=h/2;
+S.players.set(S.myId,{x:S.lp.x,y:S.lp.y,color:randColor([0,30,60,120,180,240,280,320]),name:'Host',score:0,alive:true,respawn:0});
+connectSig().then(()=>{sendSig({type:'register-host',room:S.code,from:S.myId});$('hostStatus').textContent='Room active! Share the code.'}).catch(()=>{$('hostStatus').textContent='Offline mode - no signaling server';$('hostStatus').style.color='#fa0'});
+}
+
+const showJoin=()=>{show('joinScreen');S.mode='join';S.host=false;$('joinStatus').textContent='';setTimeout(()=>$('joinCode').focus(),100)};
+
+async function joinRoom(){
+const c=clean($('joinCode').value);
+if(c.length<2){$('joinStatus').textContent='Enter a code (at least 2 chars)';$('joinStatus').className='error';return}
+S.code=c;S.myId='player-'+Date.now();
+$('joinStatus').textContent='Connecting...';$('joinStatus').className='status';
+try{await connectSig();sendSig({type:'player-joined',room:S.code,from:S.myId});setTimeout(enterClient,2000)}catch(e){$('joinStatus').textContent='Connection failed. Same WiFi required.';$('joinStatus').className='error'}
+}
+
+function enterClient(){
+document.querySelectorAll('.ui-layer').forEach(e=>e.classList.add('hidden'));$('gameUI').classList.add('active');if('ontouchstart'in window)$('joystick-zone').classList.add('active');
+S.mode='game';S.phase='waiting';
+if(!S.players.has(S.myId))S.players.set(S.myId,{x:w/2,y:h/2,color:randColor([0,30,60,120,180,240,280,320]),name:'Player',score:0,alive:true,respawn:0});
+updCount();updLB();showWait();gameLoop(performance.now());
+}
+
+function startGame(){
+initAudio();
+document.querySelectorAll('.ui-layer').forEach(e=>e.classList.add('hidden'));$('gameUI').classList.add('active');if('ontouchstart'in window)$('joystick-zone').classList.add('active');
+S.mode='game';S.phase='countdown';S.cd=3;S.cdT=0;S.time=0;S.win=null;lastT=0;
+S.lp.x=w/2;S.lp.y=h/2;
+if(!S.players.has(S.myId))S.players.set(S.myId,{x:S.lp.x,y:S.lp.y,color:randColor([0,30,60,120,180,240,280,320]),name:'Host',score:0,alive:true,respawn:0});
+S.orbs=[];S.rifts=[];S.parts=[];S.texts=[];
+for(let i=3;i--;)spawnOrb();
+updCount();updLB();showCD(3);
+bcast({type:'start-countdown',countdown:3,targetScore:S.target});
+gameLoop(performance.now());
+}
+
+const showCD=n=>{$('countdownOverlay').classList.add('active');$('countdownNumber').textContent=n>0?n:'GO';if(n>0)playS('countdown')};
+const hideCD=()=>$('countdownOverlay').classList.remove('active');
+const showWait=()=>$('waitingOverlay').classList.add('active');
+const hideWait=()=>$('waitingOverlay').classList.remove('active');
+
+function showGO(wid){
+$('gameOverOverlay').classList.add('active');
+const w=S.players.get(wid);
+if(w){$('gameOverTitle').textContent=w.name.toUpperCase()+' WINS';$('gameOverSubtitle').textContent='First to reach '+S.target+' orbs'}
+else{$('gameOverTitle').textContent='TIME UP';$('gameOverSubtitle').textContent='Game Over'}
+const sorted=Array.from(S.players.entries()).sort((a,b)=>b[1].score-a[1].score);
+$('scoreboard').innerHTML=sorted.map(([k,p])=>`<div class="score-row ${k===wid?'winner':''}"><div class="score-name"><span class="score-dot" style="background:${p.color}"></span>${p.name}${k===S.myId?' (You)':''}</div><div class="score-value">${p.score}</div></div>`).join('');
+$('restartBtn').style.display=S.host?'inline-block':'none';
+playS('win');
+}
+
+const hideGO=()=>$('gameOverOverlay').classList.remove('active');
+
+function returnToMenu(){
+hideGO();$('gameUI').classList.remove('active');$('joystick-zone').classList.remove('active');$('leaderboard').classList.remove('active');$('gameTimer').classList.remove('active');
+S.dcs.forEach(d=>d.close());S.conns.forEach(c=>c.close());S.dcs=[];S.conns=[];
+if(ws){ws.close();ws=null}
+reset();show('mainMenu');
+}
+
+function restartGame(){
+if(!S.host)return;
+reset();S.phase='countdown';S.cd=3;S.cdT=0;S.time=0;S.win=null;lastT=0;
+S.players.forEach(p=>{p.x=w/2+rand(-50,50);p.y=h/2+rand(-50,50);p.score=0;p.alive=true;p.respawn=0});
+S.lp.x=w/2;S.lp.y=h/2;
+hideGO();showCD(3);
+for(let i=3;i--;)spawnOrb();
+bcast({type:'restart-game'});
+setTimeout(()=>bcast({type:'start-countdown',countdown:3}),100);
+}
+
+const reset=()=>{S.orbs=[];S.rifts=[];S.parts=[];S.texts=[];S.orbT=0;S.riftT=0;S.win=null};
+const updCount=()=>{const n=S.players.size;$('hostPlayerCount').textContent=`Players: ${n}`;$('gamePlayerCount').textContent=`Players: ${n}`};
+const updLB=()=>{const s=Array.from(S.players.entries()).sort((a,b)=>b[1].score-a[1].score);$('leaderboard').innerHTML=s.map(([k,p])=>`<div class="leaderboard-row"><span class="leaderboard-dot" style="background:${p.color}"></span><span>${p.name}</span><span class="leaderboard-score">${p.score}</span></div>`).join('');if(S.mode==='game')$('leaderboard').classList.add('active')};
+const updTimer=()=>{const m=Math.floor(S.time/60),s=Math.floor(S.time%60);$('gameTimer').textContent=`${m<10?'0':''}${m}:${s<10?'0':''}${s}`;$('gameTimer').classList.toggle('warning',S.time>S.maxTime-30);$('gameTimer').classList.add('active')};
+
+function spawnOrb(){
+if(S.orbs.length>=S.maxOrbs)return;
+const o={id:'orb-'+Date.now()+'-'+Math.random(),x:rand(60,w-60),y:rand(60,h-60),color:randColor([45,160,280,340]),pulse:rand(0,Math.PI*2),size:8};
+S.orbs.push(o);bcast({type:'spawn-orb',orb:o});playS('spawn');
+}
+
+function spawnRift(){
+if(S.rifts.length>=S.maxRifts)return;
+const r={id:'rift-'+Date.now()+'-'+Math.random(),x:rand(100,w-100),y:rand(100,h-100),radius:25,pull:150,strength:80,rot:rand(0,Math.PI*2),rotSpd:rand(-1,1)};
+S.rifts.push(r);bcast({type:'spawn-rift',rift:r});
+}
+
+const addText=(x,y,t,c,s)=>S.texts.push({x,y,text:t,color:c,size:s,life:1,max:1,vy:-1.5});
+
+const keys={};
+addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+
+const jz=$('joystick-zone'),jk=$('joystick-knob');
+let jc={x:0,y:0};
+jz.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0],r=jz.getBoundingClientRect();jc={x:r.left+r.width/2,y:r.top+r.height/2};S.joy.a=true;updJoy(t.clientX,t.clientY)},{passive:false});
+jz.addEventListener('touchmove',e=>{e.preventDefault();if(S.joy.a)updJoy(e.touches[0].clientX,e.touches[0].clientY)},{passive:false});
+jz.addEventListener('touchend',e=>{e.preventDefault();S.joy.a=false;S.joy.dx=0;S.joy.dy=0;jk.style.transform='translate(-50%,-50%)'},{passive:false});
+
+function updJoy(cx,cy){
+const md=35;let dx=cx-jc.x,dy=cy-jc.y,d=Math.hypot(dx,dy);
+if(d>md){dx=(dx/d)*md;dy=(dy/d)*md}
+jk.style.transform=`translate(calc(-50%+${dx}px),calc(-50%+${dy}px))`;
+S.joy.dx=dx/md;S.joy.dy=dy/md;
+}
+
+function update(dt){
+if(S.mode!=='game')return;
+const me=S.players.get(S.myId);if(!me)return;
+
+if(S.phase==='countdown'){
+S.cdT+=dt;
+if(S.cdT>=1){S.cdT=0;S.cd--;if(S.cd>0)showCD(S.cd);else{hideCD();S.phase='playing';playS('go');if(S.host)bcast({type:'start-game'})}}
+return;
+}
+if(S.phase!=='playing')return;
+
+S.time+=dt;updTimer();
+
+if(S.host){
+S.orbT+=dt;if(S.orbT>=S.orbI){S.orbT=0;spawnOrb()}
+S.riftT+=dt;if(S.riftT>=S.riftI){S.riftT=0;if(S.rifts.length<S.maxRifts)spawnRift()}
+if(S.time>=S.maxTime&&!S.win)endGame(null);
+}
+
+if(me.alive){
+let dx=0,dy=0,spd=3;
+if(keys.w||keys.arrowup)dy--;
+if(keys.s||keys.arrowdown)dy++;
+if(keys.a||keys.arrowleft)dx--;
+if(keys.d||keys.arrowright)dx++;
+if(S.joy.a){dx=S.joy.dx;dy=S.joy.dy}
+if(dx||dy){const l=Math.hypot(dx,dy);if(l>1){dx/=l;dy/=l}S.lp.vx=dx*spd;S.lp.vy=dy*spd}else{S.lp.vx*=.9;S.lp.vy*=.9}
+S.rifts.forEach(r=>{const d=dist(S.lp.x,S.lp.y,r.x,r.y);if(d<r.pull&&d>0){const p=(1-d/r.pull)*r.strength*dt;S.lp.vx+=((r.x-S.lp.x)/d)*p;S.lp.vy+=((r.y-S.lp.y)/d)*p}});
+S.lp.x+=S.lp.vx;S.lp.y+=S.lp.vy;
+S.lp.x=Math.max(20,Math.min(w-20,S.lp.x));S.lp.y=Math.max(20,Math.min(h-20,S.lp.y));
+me.x=S.lp.x;me.y=S.lp.y;
+
+if(S.host){
+for(let i=S.orbs.length;i--;){const o=S.orbs[i];if(dist(me.x,me.y,o.x,o.y)<25){me.score++;bcast({type:'collect-orb',orbId:o.id,playerId:S.myId,score:me.score,orbX:o.x,orbY:o.y,orbColor:o.color});S.orbs.splice(i,1);if(me.score>=S.target)endGame(S.myId)}}
+S.players.forEach((p,k)=>{if(!p.alive)return;S.rifts.forEach(r=>{if(dist(p.x,p.y,r.x,r.y)<r.radius){p.alive=false;p.respawn=2;p.score=Math.max(0,p.score-1);bcast({type:'player-damage',playerId:k,x:p.x,y:p.y})}})});
+}
+}else{
+me.respawn-=dt;
+if(me.respawn<=0){me.alive=true;me.x=w/2+rand(-100,100);me.y=h/2+rand(-100,100);S.lp.x=me.x;S.lp.y=me.y;S.lp.vx=0;S.lp.vy=0;bcast({type:'player-respawn',playerId:S.myId,x:me.x,y:me.y})}
+}
+
+S.parts=S.parts.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.life-=dt;p.vx*=.98;p.vy*=.98;return p.life>0});
+S.texts=S.texts.filter(t=>{t.y+=t.vy;t.life-=dt;return t.life>0});
+S.rifts.forEach(r=>r.rot+=r.rotSpd*dt);
+S.orbs.forEach(o=>o.pulse+=dt*3);
+
+bcast({type:'player-update',id:S.myId,x:S.lp.x,y:S.lp.y,vx:S.lp.vx,vy:S.lp.vy,color:me.color,name:me.name,score:me.score,alive:me.alive});
+
+if(S.host&&Math.floor(S.time*10)%5===0){
+const pd={},sc={};S.players.forEach((p,k)=>{pd[k]={x:p.x,y:p.y,score:p.score,alive:p.alive};sc[k]=p.score});
+bcast({type:'game-state',orbs:S.orbs,rifts:S.rifts,gamePhase:S.phase,gameTime:S.time,players:pd,scores:sc,winner:S.win,countdown:S.cd});
+}
+}
+
+function endGame(wid){S.phase='gameover';S.win=wid;bcast({type:'game-over',winner:wid});showGO(wid)}
+const bcast=d=>S.dcs.forEach(c=>{if(c.readyState==='open')c.send(JSON.stringify(d))});
+
+function draw(){
+ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);
+S.stars.forEach(s=>{s.t+=.02;ctx.fillStyle=`rgba(255,255,255,${s.o*(.5+.5*Math.sin(s.t))})`;ctx.beginPath();ctx.arc(s.x,s.y,s.s,0,Math.PI*2);ctx.fill()});
+
+if(S.mode!=='game')return;
+
+S.rifts.forEach(r=>{
+ctx.strokeStyle='rgba(100,0,200,.03)';ctx.lineWidth=1;ctx.beginPath();ctx.arc(r.x,r.y,r.pull,0,Math.PI*2);ctx.stroke();
+const g=ctx.createRadialGradient(r.x,r.y,0,r.x,r.y,r.radius);g.addColorStop(0,'rgba(0,0,0,1)');g.addColorStop(.5,'rgba(50,0,100,.8)');g.addColorStop(1,'rgba(100,0,200,.2)');
+ctx.fillStyle=g;ctx.beginPath();ctx.arc(r.x,r.y,r.radius,0,Math.PI*2);ctx.fill();
+ctx.save();ctx.translate(r.x,r.y);ctx.rotate(r.rot);ctx.strokeStyle='rgba(150,50,255,.3)';ctx.lineWidth=2;
+for(let i=3;i--;){ctx.beginPath();ctx.ellipse(0,0,r.radius*(.6+i*.2),r.radius*(.6+i*.2)*.3,i,0,Math.PI*2);ctx.stroke()}
+ctx.restore();
+ctx.fillStyle='#000';ctx.beginPath();ctx.arc(r.x,r.y,r.radius*.4,0,Math.PI*2);ctx.fill();
+});
+
+S.orbs.forEach(o=>{
+const ps=o.size+Math.sin(o.pulse)*3;
+const g=ctx.createRadialGradient(o.x,o.y,0,o.x,o.y,ps*3);g.addColorStop(0,o.color);g.addColorStop(.5,o.color.replace('65%','30%'));g.addColorStop(1,'transparent');
+ctx.fillStyle=g;ctx.globalAlpha=.6;ctx.beginPath();ctx.arc(o.x,o.y,ps*3,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(o.x,o.y,o.size*.5,0,Math.PI*2);ctx.fill();
+ctx.strokeStyle=o.color;ctx.lineWidth=2;ctx.beginPath();ctx.arc(o.x,o.y,ps,0,Math.PI*2);ctx.stroke();
+});
+
+const alive=Array.from(S.players.values()).filter(p=>p.alive);
+ctx.strokeStyle='rgba(255,255,255,.03)';ctx.lineWidth=1;
+for(let i=0;i<alive.length;i++)for(let j=i+1;j<alive.length;j++){ctx.beginPath();ctx.moveTo(alive[i].x,alive[i].y);ctx.lineTo(alive[j].x,alive[j].y);ctx.stroke()}
+
+S.players.forEach((p,k)=>{
+const me=k===S.myId;
+if(!p.alive){
+ctx.globalAlpha=.3;const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,20);g.addColorStop(0,'rgba(255,255,255,.2)');g.addColorStop(1,'transparent');ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,20,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+if(me&&p.respawn>0){ctx.strokeStyle='rgba(255,255,255,.2)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x,p.y,25,-Math.PI/2,-Math.PI/2+(2-p.respawn)/2*Math.PI*2);ctx.stroke()}
+ctx.fillStyle='rgba(255,255,255,.3)';ctx.font='10px monospace';ctx.textAlign='center';ctx.fillText('Respawning...',p.x,p.y-35);return;
+}
+const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,me?30:20);g.addColorStop(0,p.color);g.addColorStop(1,'transparent');
+ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,me?30:20,0,Math.PI*2);ctx.fill();
+ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(p.x,p.y,me?5:4,0,Math.PI*2);ctx.fill();
+ctx.fillStyle='rgba(255,255,255,.6)';ctx.font='12px monospace';ctx.textAlign='center';ctx.fillText(p.name+(me?' (You)':''),p.x,p.y-25);
+ctx.fillStyle=p.color;ctx.font='bold 11px monospace';ctx.fillText(p.score,p.x,p.y+35);
+});
+
+S.parts.forEach(p=>{const a=p.life/p.max;ctx.fillStyle=p.color;ctx.globalAlpha=a;ctx.beginPath();ctx.arc(p.x,p.y,p.size*a,0,Math.PI*2);ctx.fill()});ctx.globalAlpha=1;
+S.texts.forEach(t=>{const a=t.life/t.max;ctx.fillStyle=t.color;ctx.globalAlpha=a;ctx.font=`bold ${t.size}px monospace`;ctx.textAlign='center';ctx.fillText(t.text,t.x,t.y)});ctx.globalAlpha=1;
+}
+
+function gameLoop(ts){
+if(!ts)ts=performance.now();
+if(!lastT)lastT=ts;
+const dt=Math.min((ts-lastT)/1000,.05);
+lastT=ts;
+update(dt);
+draw();
+if(S.mode==='game')requestAnimationFrame(gameLoop);
+}
+
+function menuLoop(){
+if(S.mode==='menu'||S.mode==='host'||S.mode==='join'||S.mode==='host-input'){
+ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);
+S.stars.forEach(s=>{s.t+=.01;ctx.fillStyle=`rgba(255,255,255,${s.o*(.3+.3*Math.sin(s.t))})`;ctx.beginPath();ctx.arc(s.x,s.y,s.s,0,Math.PI*2);ctx.fill()});
+requestAnimationFrame(menuLoop);
+}
+}
+menuLoop();
+</script>
+</body>
+</html>'''
+
+with open('/mnt/agents/output/void_multiplayer.html', 'w') as f:
+    f.write(html)
+
+print(f"Saved: {len(html)} chars")
